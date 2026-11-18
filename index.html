@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>하이웨이 터보 3D (Highway Turbo 3D)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html, body {
+    width: 100%;
+    height: 100dvh;
+    overflow: hidden;
+    background: #0b1020;
+    font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    color: #ffffff;
+  }
+  #game-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* 공통 화면 오버레이 */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    background: radial-gradient(circle at center, rgba(15, 23, 42, 0.72) 0%, rgba(8, 12, 24, 0.92) 100%);
+    backdrop-filter: blur(6px);
+    overflow-y: auto;
+  }
+  .hidden {
+    display: none !important;
+  }
+
+  /* 홈 화면 */
+  .game-title {
+    font-size: clamp(26px, 5.5vw, 52px);
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    text-align: center;
+    background: linear-gradient(135deg, #38bdf8, #818cf8, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 4px 16px rgba(56, 189, 248, 0.35));
+    margin-bottom: 6px;
+  }
+  .game-subtitle {
+    font-size: clamp(12px, 2.2vw, 16px);
+    color: #cbd5e1;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .best-record-pill {
+    background: rgba(30, 41, 59, 0.85);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    padding: 7px 18px;
+    border-radius: 999px;
+    font-size: clamp(12px, 2vw, 15px);
+    font-weight: 700;
+    color: #7dd3fc;
+    margin-bottom: 22px;
+  }
+  .home-btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(320px, 86vw);
+  }
+  .btn {
+    border: none;
+    border-radius: 14px;
+    padding: 14px 20px;
+    font-size: clamp(15px, 2.5vw, 18px);
+    font-weight: 800;
+    color: #fff;
+    cursor: pointer;
+    transition: transform 0.12s, box-shadow 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn:active {
+    transform: scale(0.96);
+  }
+  .btn-start {
+    background: linear-gradient(135deg, #f97316, #ef4444);
+    box-shadow: 0 8px 22px rgba(239, 68, 68, 0.42);
+  }
+  .btn-garage {
+    background: linear-gradient(135deg, #0284c7, #2563eb);
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+  }
+  .btn-settings {
+    background: rgba(51, 65, 85, 0.92);
+    border: 1px solid rgba(148, 163, 184, 0.4);
+  }
+  .btn-back {
+    background: rgba(30, 41, 59, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    padding: 10px 18px;
+    font-size: 14px;
+  }
+
+  /* 패널 카드 공통 */
+  .panel-box {
+    width: min(760px, 94vw);
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 20px;
+    padding: 18px 20px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+  }
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .panel-header h2 {
+    font-size: clamp(18px, 3vw, 24px);
+    color: #f8fafc;
+  }
+
+  /* 차 선택 (차고) */
+  .garage-layout {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 16px;
+    align-items: center;
+  }
+  #car-preview-box {
+    width: 100%;
+    height: 180px;
+    background: radial-gradient(circle, rgba(56, 189, 248, 0.18) 0%, rgba(15, 23, 42, 0.95) 75%);
+    border-radius: 14px;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    overflow: hidden;
+    position: relative;
+  }
+  .car-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .car-chip {
+    flex: 1 1 calc(50% - 8px);
+    background: rgba(30, 41, 59, 0.85);
+    border: 2px solid #334155;
+    border-radius: 10px;
+    padding: 8px 10px;
+    color: #e2e8f0;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: left;
+  }
+  .car-chip.selected {
+    border-color: #38bdf8;
+    background: rgba(14, 116, 144, 0.35);
+    color: #fff;
+  }
+  .stat-row {
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+  .stat-label {
+    display: flex;
+    justify-content: space-between;
+    color: #cbd5e1;
+    margin-bottom: 3px;
+  }
+  .stat-bar-bg {
+    width: 100%;
+    height: 7px;
+    background: #1e293b;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .stat-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #38bdf8, #818cf8);
+    border-radius: 999px;
+    transition: width 0.2s ease;
+  }
+
+  /* 설정 화면 */
+  .settings-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .setting-card {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 14px;
+    padding: 12px 14px;
+  }
+  .setting-card h3 {
+    font-size: 14px;
+    color: #93c5fd;
+    margin-bottom: 10px;
+  }
+  .toggle-row {
+    display: flex;
+    gap: 8px;
+  }
+  .choice-btn {
+    flex: 1;
+    padding: 9px 10px;
+    border-radius: 10px;
+    border: 2px solid #334155;
+    background: #1e293b;
+    color: #cbd5e1;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .choice-btn.active {
+    border-color: #38bdf8;
+    background: rgba(2, 132, 199, 0.35);
+    color: #fff;
+  }
+  .slider-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .mini-step-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid #475569;
+    background: #1e293b;
+    color: #fff;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  input[type="range"] {
+    flex: 1;
+    accent-color: #38bdf8;
+    cursor: pointer;
+  }
+  #control-preview-box {
+    margin-top: 10px;
+    height: 76px;
+    background: rgba(15, 23, 42, 0.85);
+    border-radius: 10px;
+    border: 1px dashed rgba(148, 163, 184, 0.35);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 16px;
+    overflow: hidden;
+  }
+
+  /* 맵 선택 화면 */
+  .course-type-bar {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 14px;
+    background: rgba(30, 41, 59, 0.85);
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+  }
+  .course-type-btn {
+    flex: 1;
+    padding: 9px 12px;
+    border-radius: 9px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .course-type-btn.active {
+    background: linear-gradient(135deg, #0284c7, #2563eb);
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(37, 99, 235, 0.4);
+  }
+  .map-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .map-card {
+    background: rgba(30, 41, 59, 0.85);
+    border: 2px solid #334155;
+    border-radius: 14px;
+    padding: 14px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.14s, border-color 0.14s;
+  }
+  .map-card:hover, .map-card:active {
+    border-color: #f97316;
+    transform: translateY(-2px);
+  }
+  .map-emoji {
+    font-size: 30px;
+    margin-bottom: 6px;
+  }
+  .map-title {
+    font-size: 14px;
+    font-weight: 800;
+    margin-bottom: 4px;
+    color: #f8fafc;
+  }
+  .map-desc {
+    font-size: 11px;
+    color: #94a3b8;
+    line-height: 1.35;
+  }
+
+  /* 인게임 HUD */
+  #hud {
+    position: fixed;
+    top: max(10px, env(safe-area-inset-top));
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    z-index: 15;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none;
+  }
+  .hud-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .hud-pill {
+    background: rgba(15, 23, 42, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 6px 13px;
+    border-radius: 999px;
+    font-size: clamp(12px, 2vw, 15px);
+    font-weight: 800;
+    backdrop-filter: blur(4px);
+  }
+  #flight-banner {
+    position: fixed;
+    top: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 16;
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.92), rgba(168, 85, 247, 0.92));
+    padding: 7px 18px;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 900;
+    box-shadow: 0 4px 18px rgba(168, 85, 247, 0.5);
+    pointer-events: none;
+  }
+
+  /* 인게임 조작 컨트롤 */
+  #controls-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 18;
+    pointer-events: none;
+  }
+  #steer-container {
+    position: absolute;
+    left: max(16px, env(safe-area-inset-left));
+    bottom: max(16px, env(safe-area-inset-bottom));
+    pointer-events: auto;
+    transform-origin: bottom left;
+  }
+  .steer-btn-pair {
+    display: flex;
+    gap: 12px;
+  }
+  .ctrl-btn {
+    width: 68px;
+    height: 68px;
+    border-radius: 18px;
+    background: rgba(15, 23, 42, 0.72);
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    color: #fff;
+    font-size: 24px;
+    font-weight: 900;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  }
+  .ctrl-btn:active, .ctrl-btn.pressed {
+    background: rgba(56, 189, 248, 0.65);
+    border-color: #38bdf8;
+    transform: scale(0.94);
+  }
+
+  /* 원형 회전 스티어링 휠 */
+  #wheel-pad {
+    width: 128px;
+    height: 128px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(30, 41, 59, 0.55) 45%, rgba(15, 23, 42, 0.88) 100%);
+    border: 8px solid #cbd5e1;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), inset 0 0 12px rgba(0, 0, 0, 0.7);
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+  }
+  #wheel-pad .wheel-top-mark {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14px;
+    height: 10px;
+    background: #ef4444;
+    border-radius: 3px;
+  }
+  #wheel-pad .wheel-spoke-h {
+    position: absolute;
+    width: 100%;
+    height: 12px;
+    background: #94a3b8;
+  }
+  #wheel-pad .wheel-spoke-v {
+    position: absolute;
+    bottom: 0;
+    width: 12px;
+    height: 50%;
+    background: #94a3b8;
+  }
+  #wheel-pad .wheel-hub {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #1e293b;
+    border: 3px solid #38bdf8;
+    z-index: 2;
+  }
+
+  /* 우측 페달 영역 */
+  #pedal-container {
+    position: absolute;
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(16px, env(safe-area-inset-bottom));
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    pointer-events: auto;
+    transform-origin: bottom right;
+  }
+  .pedal-brake {
+    width: 66px;
+    height: 76px;
+    background: rgba(185, 28, 28, 0.78);
+    border-color: rgba(252, 165, 165, 0.65);
+    font-size: 13px;
+  }
+  .pedal-brake:active, .pedal-brake.pressed {
+    background: rgba(239, 68, 68, 0.95);
+  }
+  .pedal-gas {
+    width: 72px;
+    height: 92px;
+    background: rgba(21, 128, 61, 0.82);
+    border-color: rgba(134, 239, 172, 0.65);
+    font-size: 14px;
+  }
+  .pedal-gas:active, .pedal-gas.pressed {
+    background: rgba(34, 197, 94, 0.95);
+  }
+
+  /* 가로 모드(Landscape) 및 모바일 최적화 */
+  @media (orientation: landscape) and (max-height: 560px) {
+    .overlay {
+      justify-content: flex-start;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+    .game-title {
+      font-size: 26px;
+      margin-bottom: 2px;
+    }
+    .game-subtitle {
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .best-record-pill {
+      padding: 4px 14px;
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    .home-btn-group {
+      flex-direction: row;
+      width: min(620px, 92vw);
+    }
+    .home-btn-group .btn {
+      flex: 1;
+      padding: 12px 10px;
+      font-size: 14px;
+    }
+    .panel-box {
+      padding: 12px 16px;
+    }
+    #car-preview-box {
+      height: 145px;
+    }
+    .map-grid {
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .map-card {
+      padding: 10px 6px;
+    }
+    .map-emoji {
+      font-size: 24px;
+      margin-bottom: 4px;
+    }
+  }
+  @media (max-width: 640px) and (orientation: portrait) {
+    .garage-layout, .settings-grid {
+      grid-template-columns: 1fr;
+    }
+    .map-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game-canvas"></canvas>
+
+<!-- 1. 홈 화면 -->
+<div id="home-screen" class="overlay">
+  <div class="game-title">🏎️ HIGHWAY TURBO 3D</div>
+  <div class="game-subtitle">4차선 고속도로 질주 · 부스트 &amp; 10초 희귀 비행 모드</div>
+  <div class="best-record-pill">🏆 최고 주행 거리: <span id="best-score-text">0</span> m</div>
+  <div class="home-btn-group">
+    <button id="btn-open-maps" class="btn btn-start" type="button">🏁 게임 시작</button>
+    <button id="btn-open-garage" class="btn btn-garage" type="button">🚘 차 선택</button>
+    <button id="btn-open-settings" class="btn btn-settings" type="button">⚙️ 설정</button>
+  </div>
+</div>
+
+<!-- 2. 차 선택 (차고) 화면 -->
+<div id="garage-screen" class="overlay hidden">
+  <div class="panel-box">
+    <div class="panel-header">
+      <h2>🚘 차고 · 차량 스킨 및 성능 선택</h2>
+      <button id="btn-close-garage" class="btn btn-back" type="button">← 홈으로</button>
+    </div>
+    <div class="garage-layout">
+      <div>
+        <div id="car-preview-box"></div>
+        <div style="text-align:center; font-size:12px; color:#94a3b8; margin-top:6px;">
+          등급이 높을수록 최고 속력과 브레이크 제동력이 대폭 상승합니다
+        </div>
+      </div>
+      <div>
+        <div class="car-list" id="car-list"></div>
+        <div id="car-selected-title" style="font-size:16px; font-weight:800; color:#38bdf8; margin-bottom:8px;"></div>
+        <div class="stat-row">
+          <div class="stat-label"><span>최고 속력</span><span id="stat-speed-val"></span></div>
+          <div class="stat-bar-bg"><div id="stat-speed-bar" class="stat-bar-fill"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label"><span>가속 성능</span><span id="stat-accel-val"></span></div>
+          <div class="stat-bar-bg"><div id="stat-accel-bar" class="stat-bar-fill"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label"><span>브레이크 제동력</span><span id="stat-brake-val"></span></div>
+          <div class="stat-bar-bg"><div id="stat-brake-bar" class="stat-bar-fill"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-label"><span>핸들링 응답성</span><span id="stat-steer-val"></span></div>
+          <div class="stat-bar-bg"><div id="stat-steer-bar" class="stat-bar-fill"></div></div>
+        </div>
+        <button id="btn-confirm-car" class="btn btn-garage" style="width:100%; margin-top:8px; padding:11px;" type="button">✅ 이 차량으로 결정</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. 설정 화면 -->
+<div id="settings-screen" class="overlay hidden">
+  <div class="panel-box">
+    <div class="panel-header">
+      <h2>⚙️ 게임 설정</h2>
+      <button id="btn-close-settings" class="btn btn-back" type="button">← 홈으로</button>
+    </div>
+    <div class="settings-grid">
+      <div class="setting-card">
+        <h3>🔊 사운드 설정</h3>
+        <div class="toggle-row">
+          <button id="btn-sound-on" class="choice-btn active" type="button">🔊 소리 ON</button>
+          <button id="btn-sound-off" class="choice-btn" type="button">🔇 소리 OFF</button>
+        </div>
+        <h3 style="margin-top:14px;">🕹️ 조향 조작법 선택</h3>
+        <div class="toggle-row">
+          <button id="btn-mode-buttons" class="choice-btn active" type="button">◀ ▶ 버튼 조작</button>
+          <button id="btn-mode-wheel" class="choice-btn" type="button">🎡 원형 핸들 조작</button>
+        </div>
+      </div>
+
+      <div class="setting-card">
+        <h3>📏 조작 버튼 크기 (<span id="scale-percent-text">100%</span>)</h3>
+        <div class="slider-controls">
+          <button id="btn-scale-down" class="mini-step-btn" type="button">−</button>
+          <input id="control-scale-slider" type="range" min="70" max="150" step="5" value="100">
+          <button id="btn-scale-up" class="mini-step-btn" type="button">+</button>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+          <span style="font-size:11px; color:#94a3b8;">70% ~ 150% 실시간 조절</span>
+          <button id="btn-scale-reset" class="choice-btn" style="flex:0 0 auto; padding:4px 10px; font-size:11px;" type="button">기본값 초기화</button>
+        </div>
+        <div id="control-preview-box">
+          <div id="preview-steer-area" style="transform-origin:left center;"></div>
+          <div id="preview-pedal-area" style="display:flex; gap:6px; transform-origin:right center;">
+            <div style="width:32px; height:38px; border-radius:8px; background:#b91c1c; border:1px solid #fca5a5; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:bold;">BRK</div>
+            <div style="width:36px; height:46px; border-radius:8px; background:#15803d; border:1px solid #86efac; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:bold;">GAS</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 4. 맵 선택 화면 -->
+<div id="map-screen" class="overlay hidden">
+  <div class="panel-box">
+    
